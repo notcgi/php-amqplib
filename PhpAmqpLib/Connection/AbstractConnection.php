@@ -256,6 +256,7 @@ abstract class AbstractConnection extends AbstractChannel
                 // The connection object itself is treated as channel 0
                 parent::__construct($this, 0);
 
+//                read_write_timeout?
                 $this->input = new Wire\AMQPIOReader($this->io);
 
                 $this->write($this->constants->getHeader());
@@ -646,12 +647,11 @@ abstract class AbstractConnection extends AbstractChannel
      */
     protected function wait_channel(int $channel_id, $timeout = 0): Frame
     {
-        // Keeping the original timeout unchanged.
-        $_timeout = $timeout;
         while (true) {
             $start = microtime(true);
             try {
-                $frame = $this->wait_frame($_timeout);
+//                TODO: its not correct. must be other timeout
+                $frame = $this->wait_frame($timeout);
             } catch (AMQPTimeoutException $e) {
                 if (
                     $this->heartbeat && $this->last_frame
@@ -668,15 +668,13 @@ abstract class AbstractConnection extends AbstractChannel
             $this->last_frame = microtime(true);
             $frame_channel = $frame->getChannel();
 
+//            todo: useless?
             if ($frame_channel === 0 && $frame->isHeartbeat()) {
                 // skip heartbeat frames and reduce the timeout by the time passed
                 $this->debug->debug_msg('received server heartbeat');
-                if ($_timeout > 0) {
-                    $_timeout -= $this->last_frame - $start;
-                    if ($_timeout <= 0) {
-                        // If timeout has been reached, throw the exception without calling wait_frame
-                        throw new AMQPTimeoutException('Timeout waiting on channel');
-                    }
+                if ($this->last_frame - $start <= 0) {
+                    // If timeout has been reached, throw the exception without calling wait_frame
+                    throw new AMQPTimeoutException('Timeout waiting on channel');
                 }
                 continue;
             }
